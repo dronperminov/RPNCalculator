@@ -48,7 +48,7 @@ std::vector<std::string> Parser::Parse() {
 	size_t i = 0;
 
 	while (i < expr.length()) {
-		if (IsOperator(expr[i]) || IsBracket(expr[i])) {
+		if (IsOperator(expr[i]) || IsBracket(expr[i]) || expr[i] == ',') {
 			lexemes.push_back(std::string(1, expr[i]));
 			i++;
 		}

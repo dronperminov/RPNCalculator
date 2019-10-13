@@ -14,14 +14,14 @@ void Help() {
 	cout << "    example: set a (1+2)*sqrt(5)" << endl;
 	cout << endl;
 	cout << "- def:" << endl;
-	cout << "    syntax: def function_name (argument_name) function_body" << endl;
+	cout << "    syntax: def function_name (arguments_name) function_body" << endl;
 	cout << "    function_name - name of function to difine" << endl;
-	cout << "    argument_name - name of argument" << endl;
+	cout << "    arguments_name - name of argument(s)" << endl;
 	cout << "    function_body - computable expression" << endl;
-	cout << "    example: def f1(x) sin(x) + cos(x) - 5" << endl;
+	cout << "    example: def f1(x, y) sin(x) + cos(y) - 5" << endl;
 	cout << endl;
 	cout << "- expression:" << endl;
-	cout << "    example: 5 + 2 * f1(a) - 5" << endl;
+	cout << "    example: 5 + 2 * f1(a, 5) - 5" << endl;
 	cout << endl;
 	cout << "- state: " << endl;
 	cout << "    print current variables and user functions" << endl;

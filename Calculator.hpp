@@ -15,7 +15,7 @@ class Calculator {
 
 	struct UserFunction {
 		std::string name;
-		std::string arg;
+		std::vector<std::string> args;
 		std::vector<std::string> rpn;
 	};
 
@@ -28,6 +28,7 @@ class Calculator {
 	bool IsFunction(const std::string &s) const;
 	bool IsUserFunction(const std::string &s) const;
 	bool IsNumber(const std::string &s) const;
+	bool IsIdentifier(const std::string &s) const;
 	bool IsVariable(const std::string &s) const;
 
 	int GetPriority(const std::string &s) const;
@@ -39,7 +40,7 @@ class Calculator {
 
 	double CalculateOperator(const std::string &op, double arg1, double arg2) const;
 	double CalculateFunction(const std::string &name, double arg) const;
-	double CalculateUserFunction(const std::string &name, double arg) const;
+	double CalculateUserFunction(const std::string &name, std::stack<double> &stack) const;
 	double Calculate(const std::vector<std::string> &rpn) const;
 
 	void ProcessSet(std::vector<std::string> &lexemes);
@@ -78,29 +79,37 @@ bool Calculator::IsNumber(const std::string &s) const {
 	return true;
 }
 
-bool Calculator::IsVariable(const std::string &s) const {
-	if (IsFunction(s) || IsUserFunction(s))
-		return false;
-
+bool Calculator::IsIdentifier(const std::string &s) const {
 	for (size_t i = 0; i < s.length(); i++)
 		if (!((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') || (i != 0 && s[i] >= '0' && s[i] <= '9')))
 			return false;
-	
+
 	return true;
+}
+
+bool Calculator::IsVariable(const std::string &s) const {
+	for (size_t i = 0; i < variables.size(); i++)
+		if (s == variables[i].name)
+			return true;
+
+	return false;
 }
 
 int Calculator::GetPriority(const std::string &s) const {
 	if (s == "!")
-		return 3;
-
-	if (s == "^")
 		return 4;
 
+	if (s == "^")
+		return 5;
+
 	if (s == "*" || s == "/")
-		return 2;
+		return 3;
 
 
 	if (s == "+" || s == "-")
+		return 2;
+
+	if (s == ",")
 		return 1;
 
 	return 0;
@@ -113,13 +122,13 @@ std::vector<std::string> Calculator::GetRPN(const std::vector<std::string> &lexe
 	bool mayUnary = true;
 
 	for (size_t i = 0; i < lexemes.size(); i++) {
-		if (IsNumber(lexemes[i]) || IsVariable(lexemes[i])) {
-			rpn.push_back(lexemes[i]);
-			mayUnary = false;
-		}
-		else if (IsFunction(lexemes[i]) || IsUserFunction(lexemes[i])) {
+		if (IsFunction(lexemes[i]) || IsUserFunction(lexemes[i])) {
 			stack.push(lexemes[i]);
 			mayUnary = true;
+		}
+		else if (IsNumber(lexemes[i]) || IsIdentifier(lexemes[i])) {
+			rpn.push_back(lexemes[i]);
+			mayUnary = false;
 		}
 		else if (lexemes[i] == "(") {
 			stack.push(lexemes[i]);
@@ -137,7 +146,7 @@ std::vector<std::string> Calculator::GetRPN(const std::vector<std::string> &lexe
 			stack.pop();
 			mayUnary = false;
 		}
-		else if (IsOperator(lexemes[i])) {
+		else if (IsOperator(lexemes[i]) || lexemes[i] == ",") {
 			std::string op = lexemes[i];
 
 			if (op == "-" && mayUnary)
@@ -149,8 +158,10 @@ std::vector<std::string> Calculator::GetRPN(const std::vector<std::string> &lexe
 			}
 
 			stack.push(op);
-			mayUnary = false;
+			mayUnary = lexemes[i] == ",";
 		}
+		else
+			throw std::string("Incorrect expression: unknown lexeme '") + lexemes[i] + "'";
 	}
 
 	while (!stack.empty()) {
@@ -160,6 +171,11 @@ std::vector<std::string> Calculator::GetRPN(const std::vector<std::string> &lexe
 		rpn.push_back(stack.top());
 		stack.pop();
 	}
+
+	std::cout << "rpn: ";
+	for (size_t i = 0; i < rpn.size(); i++)
+		std::cout << "[" << rpn[i] << "] ";
+	std::cout << std::endl;
 
 	return rpn;
 }
@@ -246,17 +262,33 @@ double Calculator::CalculateFunction(const std::string &name, double arg) const 
 	throw std::string("Unknown function");
 }
 
-double Calculator::CalculateUserFunction(const std::string &name, double arg) const {
+double Calculator::CalculateUserFunction(const std::string &name, std::stack<double> &stack) const {
 	int index = GetUserFunctionByName(name);
 
 	if (index == -1)
 		throw std::string("Unknown user function '") + name + "'";
 
+	if (stack.size() < userFunctions[index].args.size())
+		throw std::string("Incorrect number of arguments for function '") + name + "'";
+
 	std::vector<std::string> rpn = userFunctions[index].rpn;
+	std::vector<double> args;
+
+	for (size_t i = 0; i < userFunctions[index].args.size(); i++) {
+		args.push_back(stack.top());
+		stack.pop();
+	}
+
+	for (size_t i = 0, j = args.size() - 1; i < j; i++, j--) {
+		double arg = args[i];
+		args[i] = args[j];
+		args[j] = arg;
+	}
 
 	for (size_t i = 0; i < rpn.size(); i++)
-		if (rpn[i] == userFunctions[index].arg)
-			rpn[i] = std::to_string(arg);
+		for (size_t j = 0; j < userFunctions[index].args.size(); j++)
+			if (rpn[i] == userFunctions[index].args[j])
+				rpn[i] = std::to_string(args[j]);
 
 	return Calculate(rpn);
 }
@@ -288,9 +320,7 @@ double Calculator::Calculate(const std::vector<std::string> &rpn) const {
 			if (stack.size() < 1)
 				throw std::string("Incorrect expression");
 
-			double arg = stack.top();
-			stack.pop();
-			stack.push(CalculateUserFunction(rpn[i], arg));
+			stack.push(CalculateUserFunction(rpn[i], stack));
 		}
 		else if (rpn[i] == "!") {
 			if (stack.size() < 1)
@@ -301,7 +331,7 @@ double Calculator::Calculate(const std::vector<std::string> &rpn) const {
 
 			stack.push(-arg);
 		}
-		else if (IsVariable(rpn[i])) {
+		else if (IsIdentifier(rpn[i])) {
 			int index = GetVariableByName(rpn[i]);
 
 			if (index == -1)
@@ -312,7 +342,7 @@ double Calculator::Calculate(const std::vector<std::string> &rpn) const {
 		else if (IsNumber(rpn[i]) || (rpn[i][0] == '-' && IsNumber(rpn[i].substr(1)))) {
 			stack.push(std::stod(rpn[i]));
 		}
-		else
+		else if (rpn[i] != ",")
 			throw std::string("Unknown rpn lexeme '") + rpn[i] + "'";
 	}
 
@@ -326,7 +356,7 @@ void Calculator::ProcessSet(std::vector<std::string> &lexemes) {
 	if (lexemes.size() < 3)
 			throw std::string("Incorrect set instruction");
 
-		if (!IsVariable(lexemes[1]))
+		if (!IsIdentifier(lexemes[1]))
 			throw std::string("Second argument must be variable value");
 
 		std::string name = lexemes[1];
@@ -345,25 +375,61 @@ void Calculator::ProcessSet(std::vector<std::string> &lexemes) {
 }
 
 void Calculator::ProcessDef(std::vector<std::string> &lexemes) {
-	if (lexemes.size() < 6)
-		throw std::string("Incorrect def instruction");
+	if (lexemes.size() < 4)
+		throw std::string("Incorrect function definition");
 
-	if (lexemes[2] != "(" || !IsVariable(lexemes[3]) || lexemes[4] != ")")
-		throw std::string("Incorrect argument definition");
+	if (!IsIdentifier(lexemes[1]) || IsFunction(lexemes[1]))
+		throw std::string("Incorrect function name");
+
+	if (lexemes[2] != "(")
+		throw std::string("Incorrect argument definition: missing '(' after function name");
 
 	std::string name = lexemes[1];
-	std::string arg = lexemes[3];
+	std::vector<std::string> args;
 
-	lexemes.erase(lexemes.begin(), lexemes.begin() + 5);
+	size_t i = 3;
+
+	while (i < lexemes.size() && lexemes[i] != ")") {
+		std::string arg = lexemes[i];
+
+		if (!IsIdentifier(arg))
+			throw std::string("Arguments must be identifier. '") + arg + "' is not correct argument";
+
+		if (IsFunction(arg) || IsUserFunction(arg))
+			throw std::string("Arguments must be identifier. '") + arg + "' is a fuction";
+
+		for (size_t j = 0; j < args.size(); j++)
+			if (arg == args[j])
+				throw std::string("Argument '") + arg + "' already been used";
+
+		args.push_back(arg);
+
+		i++;
+
+		if (i < lexemes.size() && lexemes[i] == ",")
+			i++;
+	}
+
+	if (i >= lexemes.size())
+		throw std::string("Incorrect arguments definition, missing ')'");
+
+	if (args.size() == 0)
+		throw std::string("Incorrect definition: at least one argument needed");
+
+	lexemes.erase(lexemes.begin(), lexemes.begin() + i + 1);
+
+	if (lexemes.size() == 0)
+		throw std::string("Missing body of function");
+
 	std::vector<std::string> rpn = GetRPN(lexemes);
 
 	int index = GetUserFunctionByName(name);
 
 	if (index == -1) {
-		userFunctions.push_back({ name, arg, rpn });
+		userFunctions.push_back({ name, args, rpn });
 	}
 	else {
-		userFunctions[index] = { name, arg, rpn };
+		userFunctions[index] = { name, args, rpn };
 	}
 }
 
@@ -406,15 +472,24 @@ void Calculator::PrintState() const {
 		std::cout << "No user functions" << std::endl;
 	}
 	else {
-		std::cout << "+--------------------------------------+" << std::endl;
-		std::cout << "|            User functions            |" << std::endl;
-		std::cout << "+--------------+-----------------------+" << std::endl;
-		std::cout << "|     name     |          arg          |" << std::endl;
-		std::cout << "+--------------+-----------------------+" << std::endl;
+		std::cout << "+---------------------------------------+" << std::endl;
+		std::cout << "|            User functions             |" << std::endl;
+		std::cout << "+--------------+------------------------+" << std::endl;
+		std::cout << "|     name     |          args          |" << std::endl;
+		std::cout << "+--------------+------------------------+" << std::endl;
 
-		for (size_t i = 0; i < userFunctions.size(); i++)
-			std::cout << "| " << std::setw(12) << userFunctions[i].name << " | " << std::setw(21) << userFunctions[i].arg << " |" << std::endl;
+		for (size_t i = 0; i < userFunctions.size(); i++) {
+			std::string args = userFunctions[i].args[0];
 
-		std::cout << "+--------------+-----------------------+" << std::endl;
+			for (size_t j = 1; j < userFunctions[i].args.size(); j++)
+				args += " " + userFunctions[i].args[j];
+
+			if (args.length() > 19)
+				args = args.substr(0, 19) + "...";
+
+			std::cout << "| " << std::setw(12) << userFunctions[i].name << " | " << std::setw(22) << args << " |" << std::endl;
+		}
+
+		std::cout << "+--------------+------------------------+" << std::endl;
 	}
 }
